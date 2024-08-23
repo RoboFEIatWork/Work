@@ -149,24 +149,25 @@ void message_handler(){
     rpm_desejado[0]=0;rpm_desejado[1]=0;rpm_desejado[2]=0;rpm_desejado[3]=0;
     pwm[0]=512;pwm[1]=512;pwm[2]=512;pwm[3]=512;
     rpm[0]=0;rpm[1]=0;rpm[2]=0;rpm[3]=0;
-    ledcWrite(0, pwm[0]);ledcWrite(1, pwm[1]);ledcWrite(2, pwm[2]);ledcWrite(3, pwm[3]);    
+    ledcWrite(Pino_FE_PWM, pwm[0]);
+    ledcWrite(Pino_FD_PWM, pwm[1]);
+    ledcWrite(Pino_TE_PWM, pwm[2]);
+    ledcWrite(Pino_TD_PWM, pwm[3]); 
   }
 }
 
 void setup() {
-  // Inicializa o pino D2 como saída
   Serial.begin(9600);
   SerialBT.begin(9600); //Bluetooth device name
+
   //encoder
   pinMode(Pino_FE_A, INPUT_PULLUP);
   pinMode(Pino_FE_B, INPUT_PULLUP);
   encoder_FE.attachHalfQuad(Pino_FE_A, Pino_FE_B);
   //pwm
   pinMode(Pino_FE_PWM, OUTPUT);
-  //ledcSetup(0, 500, 10);//Atribuimos ao canal 0 a frequencia de 1000Hz com resolucao de 10bits.
-  //ledcAttachPin(Pino_FE_PWM, 0);//Atribuimos o pino 2 ao canal 0.
   ledcAttachChannel(Pino_FE_PWM, 500, 10, 0);
-  ledcWrite(0, pwm[0]);
+  ledcWrite(Pino_FE_PWM, pwm[0]);
 
   //encoder
   pinMode(Pino_FD_A, INPUT_PULLUP);
@@ -174,10 +175,8 @@ void setup() {
   encoder_FD.attachHalfQuad(Pino_FD_A, Pino_FD_B);
   //pwm
   pinMode(Pino_FD_PWM, OUTPUT);
-  //ledcSetup(1, 500, 10);//Atribuimos ao canal 0 a frequencia de 1000Hz com resolucao de 10bits.
-  //ledcAttachPin(Pino_FD_PWM, 1);//Atribuimos o pino 2 ao canal 0.
   ledcAttachChannel(Pino_FD_PWM, 500, 10, 1);
-  ledcWrite(1, pwm[1]);
+  ledcWrite(Pino_FD_PWM, pwm[1]);
 
   //encoder
   pinMode(Pino_TE_A, INPUT_PULLUP);
@@ -185,10 +184,8 @@ void setup() {
   encoder_TE.attachHalfQuad(Pino_TE_A, Pino_TE_B);
   //pwm
   pinMode(Pino_TE_PWM, OUTPUT);
-  //ledcSetup(2, 500, 10);//Atribuimos ao canal 0 a frequencia de 1000Hz com resolucao de 10bits.
-  //ledcAttachPin(Pino_TE_PWM, 2);//Atribuimos o pino 2 ao canal 0.
   ledcAttachChannel(Pino_TE_PWM, 500, 10, 2);
-  ledcWrite(2, pwm[2]);
+  ledcWrite(Pino_TE_PWM, pwm[2]);
 
   //encoder
   pinMode(Pino_TD_A, INPUT_PULLUP);
@@ -196,15 +193,15 @@ void setup() {
   encoder_TD.attachHalfQuad(Pino_TD_A, Pino_TD_B);
   //pwm
   pinMode(Pino_TD_PWM, OUTPUT);
-  //ledcSetup(3, 500, 10);//Atribuimos ao canal 0 a frequencia de 1000Hz com resolucao de 10bits.
-  //ledcAttachPin(Pino_TD_PWM, 3);//Atribuimos o pino 2 ao canal 0.
   ledcAttachChannel(Pino_TD_PWM, 500, 10, 3);
-  ledcWrite(3, pwm[3]);
+  ledcWrite(Pino_TD_PWM, pwm[3]);
 }
 
 // A função de loop é executada repetidamente para sempre
 void loop() {
- 
+  if (SerialBT.available()){
+    message_handler();
+  }
   if(contando==1 && millis()-msegundos_ini > tempo_contagem){
     rpm[0],rpm[1],rpm[2],rpm[3]=get_rpm();
     SerialBT.print("RPM Desejado: ");
@@ -236,8 +233,8 @@ void loop() {
     msegundos_ini=millis();    
     ler=0; 
   }
-  ledcWrite(0, pwm[0]);
-  ledcWrite(1, pwm[1]);
-  ledcWrite(2, pwm[2]);
-  ledcWrite(3, pwm[3]);
+  ledcWrite(Pino_FE_PWM, pwm[0]);
+  ledcWrite(Pino_FD_PWM, pwm[1]);
+  ledcWrite(Pino_TE_PWM, pwm[2]);
+  ledcWrite(Pino_TD_PWM, pwm[3]);
 }
