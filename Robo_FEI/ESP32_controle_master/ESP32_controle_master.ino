@@ -48,6 +48,7 @@ bool contando=0;
 bool ler=0;
 int tempo_contagem=100;
 
+
 float get_rpm(){
   rpm[0] = ((encoder_FE.getCount()-encoder_pos_ini[0])*60000)/(tempo_contagem*50000);
   rpm[1] = ((encoder_FD.getCount()-encoder_pos_ini[1])*60000)/(tempo_contagem*50000);
