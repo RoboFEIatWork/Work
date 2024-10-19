@@ -211,7 +211,6 @@ void loop() {
     if (rpm_desejado[i]==0){pwm[i]=512;}
   }
 
-
   ledcWrite(Pino_FE_PWM, pwm[0]);
   ledcWrite(Pino_FD_PWM, pwm[1]);
   ledcWrite(Pino_TE_PWM, pwm[2]);
