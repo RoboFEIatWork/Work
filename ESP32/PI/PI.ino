@@ -43,6 +43,16 @@ struct Vel
 // Cria uma variável do tipo Vel
 Vel vel;
 
+const int sampleTime = 100; // Tempo de amostragem em milissegundos
+float errorSumFL = 0;
+float errorSumFR = 0;
+float errorSumBL = 0;
+float errorSumBR = 0;
+float lastErrorFL = 0;
+float lastErrorFR = 0;
+float lastErrorBL = 0;
+float lastErrorBR = 0;
+
 // Define os pinos utilizados para a leitura dos sinais do encoder
 //motor superior esquerdo
 #define Pino_FE_A 33
@@ -63,10 +73,11 @@ Vel vel;
 
 #define indicador_PI 14
 #define Kp 1
-#define Ki 0.25
+#define Ki 0.01
 
-#define WHEEL_DIAMETER 0.1
+#define WHEEL_RADIUS 0.05
 #define ROBOT_RADIUS 0.16
+
 
 //definição de variáveis
 String mensagem;
@@ -132,43 +143,38 @@ void ClearEncoder() {
 }
 
 
-
-void get_rpm(){
-  get_encoder();
-  msegundos_ini = millis()
-  while (millis()-msegundos_ini < tempo_contagem) {
-  }
-  get_encoder();
-  rpm[0] = ((encoder_posicao[0]-encoder_posicao_anterior[0])/tempo_contagem)/245760000;
-  rpm[1] = ((encoder_posicao[1]-encoder_posicao_anterior[1])/tempo_contagem)/245760000;
-  rpm[2] = ((encoder_posicao[2]-encoder_posicao_anterior[2])/tempo_contagem)/245760000;
-  rpm[3] = ((encoder_posicao[3]-encoder_posicao_anterior[3])/tempo_contagem)/245760000;
-}
-
-void MotorVelocity(){
+void ControleMotores(){
   // Calculate desired wheel speeds based on linear and angular velocity
-  float deriredSpeed[0] = (vel.linear.x - vel.linear.y - vel.angular.z * ROBOT_RADIUS) / WHEEL_RADIUS;
-  float deriredSpeed[1] = (vel.linear.x + vel.linear.y + vel.angular.z * ROBOT_RADIUS) / WHEEL_RADIUS;
-  float deriredSpeed[2] = (vel.linear.x + vel.linear.y - vel.angular.z * ROBOT_RADIUS) / WHEEL_RADIUS;
-  float deriredSpeed[3] = (vel.linear.x - vel.linear.y + vel.angular.z * ROBOT_RADIUS) / WHEEL_RADIUS;
+  desiredSpeeds[0] = (vel.linear.x - vel.linear.y - vel.angular.z * ROBOT_RADIUS) / WHEEL_RADIUS;
+  desiredSpeeds[1] = (vel.linear.x + vel.linear.y + vel.angular.z * ROBOT_RADIUS) / WHEEL_RADIUS;
+  desiredSpeeds[2] = (vel.linear.x + vel.linear.y - vel.angular.z * ROBOT_RADIUS) / WHEEL_RADIUS;
+  desiredSpeeds[3] = (vel.linear.x - vel.linear.y + vel.angular.z * ROBOT_RADIUS) / WHEEL_RADIUS;
 
   //Measure the actual speed of the wheels from the encoders
-  float FL_WheelSpeed = encoder_FE.getCount() / (ENCODER_PERIOD / 1000.0); // Speed in encoder units per second
-  float FR_WheelSpeed = encoder_FD.getCount() / (ENCODER_PERIOD / 1000.0); // Speed in encoder units per second
-  float BL_WheelSpeed = encoder_TE.getCount() / (ENCODER_PERIOD / 1000.0); // Speed in encoder units per second
-  float BR_WheelSpeed = encoder_TD.getCount() / (ENCODER_PERIOD / 1000.0); // Speed in encoder units per second
+  // Calculando a velocidade angular (em revoluções por segundo)
+  float FL_WheelAngularSpeed = encoder_FE.getCount() / (ENCODER_PERIOD / 1000.0) / 1024;
+  float FR_WheelAngularSpeed = encoder_FD.getCount() / (ENCODER_PERIOD / 1000.0) / 1024;
+  float BL_WheelAngularSpeed = encoder_TE.getCount() / (ENCODER_PERIOD / 1000.0) / 1024;
+  float BR_WheelAngularSpeed = encoder_TD.getCount() / (ENCODER_PERIOD / 1000.0) / 1024;
+
+  // Calculando a velocidade linear (em metros por segundo)
+  float FL_WheelSpeed = FL_WheelAngularSpeed * 2 * 3.1416 * WHEEL_RADIUS;
+  float FR_WheelSpeed = FR_WheelAngularSpeed * 2 * 3.1416 * WHEEL_RADIUS;
+  float BL_WheelSpeed = BL_WheelAngularSpeed * 2 * 3.1416 * WHEEL_RADIUS;
+  float BR_WheelSpeed = BR_WheelAngularSpeed * 2 * 3.1416 * WHEEL_RADIUS;
 
   Serial.println("wheel speeds:");
-  Serial.println(FL_WheelSpeed);
-  Serial.println(FR_WheelSpeed);
-  Serial.println(BL_WheelSpeed);
-  Serial.println(BR_WheelSpeed);
+  Serial.println(encoder_FE.getCount());
+
 
   // Calculate the error between desired and actual speeds
-  float FL_Error = desiredSpeedFL - FL_WheelSpeed;
-  float FR_Error = desiredSpeedFR - FR_WheelSpeed;
-  float BL_Error = desiredSpeedBL - BL_WheelSpeed;
-  float BR_Error = desiredSpeedBR - BR_WheelSpeed;
+  float FL_Error = desiredSpeeds[0] - FL_WheelSpeed;
+  float FR_Error = desiredSpeeds[1] - FR_WheelSpeed;
+  float BL_Error = desiredSpeeds[2] - BL_WheelSpeed;
+  float BR_Error = desiredSpeeds[3] - BR_WheelSpeed;
+  
+  Serial.println("wheel desiredSpeeds:");
+  Serial.println(desiredSpeeds[0]);
 
   // Apply PI control for each motor velocity control
   float FL_PWM = Kp * FL_Error + Ki * errorSumFL / (sampleTime / 1000.0);
@@ -178,33 +184,27 @@ void MotorVelocity(){
 
   Serial.println("PWM values:");
   Serial.println(FL_PWM);
-  Serial.println(FR_PWM);
-  Serial.println(BL_PWM);
-  Serial.println(BR_PWM);
+
 
   // limita os valores do PWM entre 0 a 1023 sendo 512 o valor de parada
-  pwm[0] = constrain(FL_PWM + 512, -512, 512);
-  pwm[1] = constrain(FR_PWM + 512, -512, 512);
-  pwm[2] = constrain(BL_PWM + 512, -512, 512);
-  pwm[3] = constrain(BR_PWM + 512, -512, 512);
+  pwm[0] = constrain(FL_PWM, -512, 512) + 512;
+  pwm[1] = constrain(FR_PWM, -512, 512) + 512;
+  pwm[2] = constrain(BL_PWM, -512, 512) + 512;
+  pwm[3] = constrain(BR_PWM, -512, 512) + 512;
 
   Serial.println("PWM values after constrain:");
   Serial.println(pwm[0]);
-  Serial.println(pwm[1]);
-  Serial.println(pwm[2]);
-  Serial.println(pwm[3]);
+
 
   //
   ledcWrite(Pino_FE_PWM, pwm[0]);
-  ledcWrite(Pino_FD_PWM, pwm[1]);
-  ledcWrite(Pino_TE_PWM, pwm[2]);
-  ledcWrite(Pino_TD_PWM, pwm[3]);
+
 
   // Update PID control variables
-  errorSumFL += FL_Error * (sampleTime / 1000.0);
-  errorSumFR += FR_Error * (sampleTime / 1000.0);
-  errorSumBL += BL_Error * (sampleTime / 1000.0);
-  errorSumBR += BR_Error * (sampleTime / 1000.0);
+  errorSumFL += FL_Error;
+  errorSumFR += FR_Error;
+  errorSumBL += BL_Error;
+  errorSumBR += BR_Error ;
   lastErrorFL = FL_Error;
   lastErrorFR = FR_Error;
   lastErrorBL = BL_Error;
@@ -253,10 +253,11 @@ void setup() {
   ledcAttachChannel(Pino_TD_PWM, 500, 10, 3);
   ledcWrite(Pino_TD_PWM, pwm[3]);
 
-  clearEncoders();
+  ClearEncoder();
+
 
   // Define os valores
-  vel.linear.x = 0.0;
+  vel.linear.x = 0.5;
   vel.linear.y = 0.0;
   vel.linear.z = 0.0;
   vel.angular.x = 0.0;
@@ -267,29 +268,38 @@ void setup() {
 // A função de loop é executada repetidamente para sempre
 void loop() {
 
-  // Verifica se existem novos dados na porta serial
-  if (Serial.available() > 0) {
-    serialEvent();
-  }
+  // // Verifica se existem novos dados na porta serial
+  // if (Serial.available() > 0) {
+  //   serialEvent();
+  // }
 
+  // if(millis() - encoder_timer >=  ENCODER_PERIOD){
+
+  //   ControleMotores();
+
+  //   encoder_timer = millis();
+
+  //   StaticJsonDocument<300> doc; // Cria um documento JSON
+
+  //   // --- Leitura dos Encoders------------------------------------------------------
+  //   JsonArray array_encoders = doc.createNestedArray("encoders"); // Cria um array JSON
+  //   // Adiciona valores ao array
+  //   // array_encoders.add( Encoder1.getCount());
+  //   // array_encoders.add( Encoder2.getCount());
+  //   //-------------------------------------------------------------------------------
+
+  //   // Serializa e envia o documento JSON
+  //   serializeJson(doc, Serial);
+  //   // Serial.println(); // Adiciona uma nova linha
+  // }
+//------------------------------------------------------------------------------------------
   if(millis() - encoder_timer >=  ENCODER_PERIOD){
 
     ControleMotores();
 
     encoder_timer = millis();
 
-    StaticJsonDocument<300> doc; // Cria um documento JSON
-
-    // --- Leitura dos Encoders------------------------------------------------------
-    JsonArray array_encoders = doc.createNestedArray("encoders"); // Cria um array JSON
-    // Adiciona valores ao array
-    array_encoders.add( Encoder1.getCount());
-    array_encoders.add( Encoder2.getCount());
-    //-------------------------------------------------------------------------------
-
-    // Serializa e envia o documento JSON
-    serializeJson(doc, Serial);
-    Serial.println(); // Adiciona uma nova linha
   }
+
 
 }
