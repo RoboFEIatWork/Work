@@ -9,8 +9,8 @@
 #define MOTOR_REDUCTION 28
 
 // Motor Inferior Direito
-#define Pino_RR_A 18 
-#define Pino_RR_B 19 
+#define Pino_RR_A 18
+#define Pino_RR_B 19
 #define Pino_RR_PWM 2
 
 // Motor Inferior Esquerdo
@@ -40,7 +40,7 @@ float encoder_time = 0;
 
 //Velocity PI control
 float Kp = 1.0;
-float Ki = 0.01;
+float Ki = 0.1;
 
 float erroRR = 0;
 float erroRL = 0;
@@ -75,7 +75,7 @@ void clearEncoder() {
 }
 
 float target_rpm(){
-  float target_rpm = 0;
+  float target_rpm = 45;
 
   // if (motorIdx % 2 == 0){
   //   target_rpm = target_rpm * -1 
@@ -85,14 +85,14 @@ float target_rpm(){
 }
 
 
-float CalcControlSignal(float rpm, float& rpm_previo, float& rpm_filtrado, float target_rpm,float& erro, float& erroInt) {
+float CalcControlSignal(float rpm, float& rpm_previo, float& rpm_filtrado, float target_rpm,float& erro, float& erroInt, float Kp, float Ki) {
   // Filtro passa-baixa de 25Hz
   rpm_filtrado = 0.854 * rpm_filtrado + 0.0728 * rpm + 0.0728 * rpm_previo;
   rpm_previo = rpm;
 
   // Cálculo do erro
-  erro = target_rpm - rpm_filtrado;
-  erroInt += erro * ENCODER_PERIOD;
+  erro = target_rpm - rpm;
+  erroInt += erro;
   
   // Calcula o sinal de controle u(s)
   float u_s = Kp * erro + Ki * erroInt;
@@ -119,8 +119,8 @@ void CalcSpeed() {
   float rpmRL = (rotationsRL / (ENCODER_PERIOD / 1000.0)) * 60; // ENCODER_PERIOD está em ms, então dividimos por 1000 para converter para segundos
   
   // Chama a função para calcular o sinal de controle e filtrar o RPM
-  float u_s_RR = CalcControlSignal(rpmRR, rpm_previoRR, rpm_filtradoRR, target_rpm(), erroRR, erroIntRR);
-  float u_s_RL = CalcControlSignal(rpmRL, rpm_previoRL, rpm_filtradoRL, -target_rpm(), erroRL, erroIntRL);
+  float u_s_RR = CalcControlSignal(rpmRR, rpm_previoRR, rpm_filtradoRR, target_rpm(), erroRR, erroIntRR, 1, 0.1);
+  float u_s_RL = CalcControlSignal(rpmRL, rpm_previoRL, rpm_filtradoRL, -target_rpm(), erroRL, erroIntRL, 1, 0.1);
 
   // Atualiza a posição anterior
   posPrevRR = posRR; 
@@ -131,7 +131,7 @@ void CalcSpeed() {
   float u_s[2] = {u_s_RR,u_s_RL};
 
   for(int i = 0; i < 2; i++){
-    pwm[i] = pwm[i] + u_s[i];
+    pwm[i] = ((u_s[i] / 144) * 512) + 512;
 
     if(pwm[i] < 0){
       pwm[i] = 0;
@@ -141,31 +141,20 @@ void CalcSpeed() {
     }
     ledcWrite(pwmVal[i], pwm[i]);
   }
-  // //seta a velocidade e direção do motor
-  // int dir = 1;
-  // if(u_s<0){
-  //   dir = -1;
-  // }
-  
 
-  // TODO: fazer a implementacao do setMotor
-  // setMotor(Pino_RR_PWM, pwrRR);
-
-  // Imprime a posição e a velocidade em RPM
-  // Serial.println(u_s[1]);
-  // Serial.println(u_s[0]);
-
-    // Imprime os valores no Serial Plotter
+  // Imprime os valores no Serial Plotter
   Serial.print(target_rpm()); // Imprime o valor do motor direito
   Serial.print(",");
   Serial.print(rpmRR); // Imprime o valor do motor esquerdo
+  Serial.print(",");
+  Serial.print(u_s_RR); // Imprime o valor do motor esquerdo
+  Serial.print(",");
+  Serial.print(-rpmRL); // Imprime o valor do motor esquerdo
+  Serial.print(",");
+  Serial.print(-u_s_RL); // Imprime o valor do motor esquerdo
   Serial.println();
-  // Serial.println(target_rpm());
-  // Serial.println(-target_rpm());
-
-  // Serial.println(rpmRR);
-  // Serial.println(rpmRL);
 }
+
 
 void setup() {
   // put your setup code here, to run once:
@@ -202,10 +191,11 @@ void setup() {
 
 void loop() {
   // put your main code here, to run repeatedly:
-
   if(millis() - encoder_time >= ENCODER_PERIOD){
     
+
     CalcSpeed();
+
 
     encoder_time = millis();
   }
