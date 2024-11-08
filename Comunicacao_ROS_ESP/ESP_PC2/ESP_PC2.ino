@@ -1,7 +1,7 @@
 //bibliotrcsa
 #include <stdio.h>
 #include <ESP32Encoder.h>
-// #include <ArduinoJson.h>
+#include <ArduinoJson.h>
 
 #define ENCODER_PERIOD 100 //amostragem de tempo
 
@@ -81,18 +81,42 @@ float rpm_previoFR = 0;
 float rpm_filtradoFL = 0;
 float rpm_previoFL = 0;
 
+int target_rpm[4] = {0,0,0,0};
+
+
+void serialEvent(){
+  int     size_ = 0;
+  String  payload;
+  while ( !Serial.available()  ){}
+  if ( Serial.available() )
+    payload = Serial.readStringUntil( '\n' );
+  StaticJsonDocument<512> doc;
+  DeserializationError   error = deserializeJson(doc, payload);
+  if (error) {
+    Serial.println(error.c_str()); 
+    return;
+  }
+  if (doc.containsKey("motor1") && doc.containsKey("motor2") && doc.containsKey("motor3") && doc.containsKey("motor4")) {
+     target_rpm[0] = doc["motor1"];
+     target_rpm[1] = doc["motor2"];
+     target_rpm[2] = doc["motor3"];
+     target_rpm[3] = doc["motor4"];
+  }
+  else {
+      target_rpm[0] = target_rpm[0];
+      target_rpm[1] = target_rpm[1];
+      target_rpm[2] = target_rpm[2];
+      target_rpm[3] = target_rpm[3];
+  }
+  //delay(20);
+}
+
 
 void clearEncoder() {
   encoder_RR.clearCount();
   encoder_RL.clearCount();
   encoder_FR.clearCount();
   encoder_FL.clearCount();
-}
-
-float target_rpm(){
-  float target_rpm = 30;
-
-  return target_rpm;
 }
 
 
@@ -138,10 +162,10 @@ void CalcSpeed() {
   float rpmFL = (rotationsFL / (ENCODER_PERIOD / 1000.0)) * 60; // ENCODER_PERIOD está em ms, então dividimos por 1000 para converter para segundos
   
   // Chama a função para calcular o sinal de controle e filtrar o RPM
-  float u_s_RR = CalcControlSignal(rpmRR, rpm_previoRR, rpm_filtradoRR, -target_rpm(), erroRR, erroIntRR, Kp, Ki);
-  float u_s_RL = CalcControlSignal(rpmRL, rpm_previoRL, rpm_filtradoRL, target_rpm(), erroRL, erroIntRL, Kp, Ki);
-  float u_s_FR = CalcControlSignal(rpmFR, rpm_previoFR, rpm_filtradoFR, -target_rpm(), erroFR, erroIntFR, Kp, Ki);
-  float u_s_FL = CalcControlSignal(rpmFL, rpm_previoFL, rpm_filtradoFL, target_rpm(), erroFL, erroIntFL, Kp, Ki);
+  float u_s_RR = CalcControlSignal(rpmRR, rpm_previoRR, rpm_filtradoRR, -target_rpm[0], erroRR, erroIntRR, Kp, Ki);
+  float u_s_RL = CalcControlSignal(rpmRL, rpm_previoRL, rpm_filtradoRL, target_rpm[1], erroRL, erroIntRL, Kp, Ki);
+  float u_s_FR = CalcControlSignal(rpmFR, rpm_previoFR, rpm_filtradoFR, -target_rpm[2], erroFR, erroIntFR, Kp, Ki);
+  float u_s_FL = CalcControlSignal(rpmFL, rpm_previoFL, rpm_filtradoFL, target_rpm[3], erroFL, erroIntFL, Kp, Ki);
 
   // Atualiza a posição anterior
   posPrevRR = posRR; 
@@ -165,34 +189,6 @@ void CalcSpeed() {
     }
     ledcWrite(pwmVal[i], pwm[i]);
   }
-
-  // Imprime os valores no Serial Plotter
-  // Serial.print(target_rpm()); // Imprime o valor do motor direito
-  // Serial.print(",");
-  // Serial.print(rpmRR); // Imprime o valor do motor esquerdo
-  // Serial.print(",");
-  // Serial.print(u_s_RR); // Imprime o valor do motor esquerdo
-  // Serial.print(",");
-  // Serial.print(-rpmRL); // Imprime o valor do motor esquerdo
-  // Serial.print(",");
-  // Serial.print(-u_s_RL); // Imprime o valor do motor esquerdo
-  // Serial.println();
-
-  Serial.print(target_rpm()); // Imprime o valor do motor direito
-  Serial.print(",");
-  Serial.print(-rpmFR); // Imprime o valor do motor esquerdo
-  Serial.print(",");
-  Serial.print(rpmFL); // Imprime o valor do motor esquerdo
-  Serial.print(",");
-  Serial.print(-rpmRR); // Imprime o valor do motor esquerdo
-  Serial.print(",");
-  Serial.print(rpmRL); // Imprime o valor do motor esquerdo
-  Serial.println();
-
-  // Serial.print(Pino_FL_PWM);
-  // Serial.print(",");
-  // Serial.print(u_s_FL);
-  // Serial.println();
 
 }
 
@@ -247,10 +243,15 @@ void setup() {
 
   clearEncoder();
 
+  while(!Serial) {
+  }
+
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
+
+  serialEvent();
+
   if(millis() - encoder_time >= ENCODER_PERIOD){
     
 

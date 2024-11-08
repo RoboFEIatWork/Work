@@ -1,32 +1,41 @@
 //bibliotrcsa
 #include <stdio.h>
 #include <ESP32Encoder.h>
-// #include <ArduinoJson.h>
+#include <ArduinoJson.h>
+
 
 #define ENCODER_PERIOD 100 //amostragem de tempo
 
+//Dados do robô
 #define PULSES_PER_ROTATION 1024
 #define MOTOR_REDUCTION 28
+#define WHEEL_RADIUS 0.05  //metros
+#define lx 0.16            //metros tem que medir -----------------------------------
+#define ly 0.1             //metros tem que medir -----------------------------------
 
-//Motor Superior Esquerdo
+
+#define BUFFER_SIZE_RECEIVER 300
+
+
+//Definição dos pinos do Motor Superior Esquerdo
 #define Pino_FL_A 33
 #define Pino_FL_B 25
 #define Pino_FL_PWM 32
-//Motor Superior Direito
+
+//Definição dos pinos do Motor Superior Direito
 #define Pino_FR_A 23
 #define Pino_FR_B 22
 #define Pino_FR_PWM 21
 
-// Motor Inferior Direito
+//Definição dos pinos do Motor Inferior Direito
 #define Pino_RR_A 18
 #define Pino_RR_B 19
 #define Pino_RR_PWM 2
 
-// Motor Inferior Esquerdo
+//Definição dos pinos do Motor Inferior Esquerdo
 #define Pino_RL_A 26 
 #define Pino_RL_B 27 
 #define Pino_RL_PWM 13
-
 
 // Definaçao dos Encoders
 ESP32Encoder encoder_RR;
@@ -34,12 +43,13 @@ ESP32Encoder encoder_RL;
 ESP32Encoder encoder_FR;
 ESP32Encoder encoder_FL;
 
+//Definição dos zeros dos motores, em pwm
 int pwmFR = 520;
 int pwmFL = 520;
 int pwmRR = 520;
 int pwmRL = 550;
 
-//globais
+//globais para os cálculos do PI para cada motor
 long prevTRR = 0;
 long prevTRL = 0;
 long prevTFR = 0;
@@ -65,22 +75,77 @@ float erroIntFR = 0; //erro integral
 float erroIntFL = 0; //erro integral
 
 
-//variáveis para o filtro
+//variáveis para o filtro motor Rear Right
 float rpm_filtradoRR = 0;
 float rpm_previoRR = 0;
 
-//variáveis para o filtro
+//variáveis para o filtro motor Rear Left
 float rpm_filtradoRL = 0;
 float rpm_previoRL = 0;
 
-//variáveis para o filtro
+//variáveis para o filtro motor Front Right
 float rpm_filtradoFR = 0;
 float rpm_previoFR = 0;
 
-//variáveis para o filtro
+//variáveis para o filtro motor Front Left
 float rpm_filtradoFL = 0;
 float rpm_previoFL = 0;
 
+//variáveis para o rpm desejado para cada roda
+float target_rpm_RR = 0;
+float target_rpm_RL = 0;
+float target_rpm_FR = 0;
+float target_rpm_FL = 0;
+
+
+//Formato da mensagem que a ESP vai receber pela serial, correspondendo ao cmd_vel_caramelo
+struct Vel
+{
+  struct Linear
+  {
+    float x;
+    float y;
+    float z;
+  } linear;
+  struct Angular
+  {
+    float x;
+    float y;
+    float z;
+  } angular;
+};
+
+// Cria uma variável do tipo Vel
+Vel vel;
+
+void processMessage() {
+  int     size_ = 0;
+  String  payload;
+  while ( !Serial.available()  ){}
+  if ( Serial.available() )
+    payload = Serial.readStringUntil( '\n' );
+
+  StaticJsonDocument<BUFFER_SIZE_RECEIVER> doc_subscription_cmd_vel;
+  DeserializationError   error = deserializeJson(doc_subscription_cmd_vel, payload);
+
+  if (error) {
+    Serial.println(error.c_str()); 
+    return;
+  }
+  if (doc_subscription_cmd_vel.containsKey("linear_x") && doc_subscription_cmd_vel.containsKey("angular_z")) {
+      float linear_x = doc_subscription_cmd_vel["linear_x"];
+      float linear_y = doc_subscription_cmd_vel["linear_y"];
+      float angular_z = doc_subscription_cmd_vel["angular_z"];
+
+      // Define os valores
+      vel.linear.x = linear_x;
+      vel.linear.y = linear_y;
+      vel.linear.z = 0.0;
+      vel.angular.x = 0.0;
+      vel.angular.y = 0.0;
+      vel.angular.z = angular_z;
+  }
+}
 
 void clearEncoder() {
   encoder_RR.clearCount();
@@ -89,10 +154,13 @@ void clearEncoder() {
   encoder_FL.clearCount();
 }
 
-float target_rpm(){
-  float target_rpm = 30;
-
-  return target_rpm;
+void target_rpm(){
+  // Aplica cinemática inversa para o cálculo das velocidades angulares (rad/s), 
+  //para cada roda e em seguida aplica uma constante para transformar o valor para rpm.
+  target_rpm_FL = (vel.linear.x -vel.linear.y -(lx + ly)*vel.angular.z)/WHEEL_RADIUS * 9.5493; 
+  target_rpm_FR = (vel.linear.x +vel.linear.y +(lx + ly)*vel.angular.z)/WHEEL_RADIUS * 9.5493;
+  target_rpm_RL = (vel.linear.x +vel.linear.y -(lx + ly)*vel.angular.z)/WHEEL_RADIUS * 9.5493;
+  target_rpm_RR = (vel.linear.x -vel.linear.y +(lx + ly)*vel.angular.z)/WHEEL_RADIUS * 9.5493;
 }
 
 
@@ -137,11 +205,13 @@ void CalcSpeed() {
   float rpmFR = (rotationsFR / (ENCODER_PERIOD / 1000.0)) * 60; // ENCODER_PERIOD está em ms, então dividimos por 1000 para converter para segundos
   float rpmFL = (rotationsFL / (ENCODER_PERIOD / 1000.0)) * 60; // ENCODER_PERIOD está em ms, então dividimos por 1000 para converter para segundos
   
+  target_rpm(); // calcula o target rpm com base no sinal do serial
+
   // Chama a função para calcular o sinal de controle e filtrar o RPM
-  float u_s_RR = CalcControlSignal(rpmRR, rpm_previoRR, rpm_filtradoRR, -target_rpm(), erroRR, erroIntRR, Kp, Ki);
-  float u_s_RL = CalcControlSignal(rpmRL, rpm_previoRL, rpm_filtradoRL, target_rpm(), erroRL, erroIntRL, Kp, Ki);
-  float u_s_FR = CalcControlSignal(rpmFR, rpm_previoFR, rpm_filtradoFR, -target_rpm(), erroFR, erroIntFR, Kp, Ki);
-  float u_s_FL = CalcControlSignal(rpmFL, rpm_previoFL, rpm_filtradoFL, target_rpm(), erroFL, erroIntFL, Kp, Ki);
+  float u_s_RR = CalcControlSignal(rpmRR, rpm_previoRR, rpm_filtradoRR, -target_rpm_RR, erroRR, erroIntRR, Kp, Ki);
+  float u_s_RL = CalcControlSignal(rpmRL, rpm_previoRL, rpm_filtradoRL, target_rpm_RL, erroRL, erroIntRL, Kp, Ki);
+  float u_s_FR = CalcControlSignal(rpmFR, rpm_previoFR, rpm_filtradoFR, -target_rpm_FR, erroFR, erroIntFR, Kp, Ki);
+  float u_s_FL = CalcControlSignal(rpmFL, rpm_previoFL, rpm_filtradoFL, target_rpm_FL, erroFL, erroIntFL, Kp, Ki);
 
   // Atualiza a posição anterior
   posPrevRR = posRR; 
@@ -166,34 +236,6 @@ void CalcSpeed() {
     ledcWrite(pwmVal[i], pwm[i]);
   }
 
-  // Imprime os valores no Serial Plotter
-  // Serial.print(target_rpm()); // Imprime o valor do motor direito
-  // Serial.print(",");
-  // Serial.print(rpmRR); // Imprime o valor do motor esquerdo
-  // Serial.print(",");
-  // Serial.print(u_s_RR); // Imprime o valor do motor esquerdo
-  // Serial.print(",");
-  // Serial.print(-rpmRL); // Imprime o valor do motor esquerdo
-  // Serial.print(",");
-  // Serial.print(-u_s_RL); // Imprime o valor do motor esquerdo
-  // Serial.println();
-
-  Serial.print(target_rpm()); // Imprime o valor do motor direito
-  Serial.print(",");
-  Serial.print(-rpmFR); // Imprime o valor do motor esquerdo
-  Serial.print(",");
-  Serial.print(rpmFL); // Imprime o valor do motor esquerdo
-  Serial.print(",");
-  Serial.print(-rpmRR); // Imprime o valor do motor esquerdo
-  Serial.print(",");
-  Serial.print(rpmRL); // Imprime o valor do motor esquerdo
-  Serial.println();
-
-  // Serial.print(Pino_FL_PWM);
-  // Serial.print(",");
-  // Serial.print(u_s_FL);
-  // Serial.println();
-
 }
 
 
@@ -201,7 +243,7 @@ void setup() {
   // put your setup code here, to run once:
   Serial.begin(9600);
 
-    // Configuração dos pinos de entrada (sensores de encoders)
+  // Configuração dos pinos de entrada (sensores de encoders)
   pinMode(Pino_RR_A, INPUT);
   pinMode(Pino_RR_B, INPUT);
 
@@ -247,17 +289,35 @@ void setup() {
 
   clearEncoder();
 
+  while(!Serial) {
+  }
+
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
+
+  // Processar e Atuzlizar as velociade
+  processMessage();
+
+  //Calcula as velocidades das rodas e faz o PI
   if(millis() - encoder_time >= ENCODER_PERIOD){
     
-
     CalcSpeed();
 
     encoder_time = millis();
   }
   
+  //Envia a leitura dos encoders pela serial para o PC, no formato Json, para fazer o SLAM
+  //Rotations mostra a diferença do quanto de volta a roda deu desde a última leitura. Ou seja, 0.3 voltas, por exemplo.
+  Serial.print("{\"MotorFL\": ");
+  Serial.print(rotationsFL, 2);  // Imprime o valor do encoder do motor1 com 2 casas decimais
+  Serial.print(", \"MotorFR\": ");
+  Serial.print(rotationsFR, 2);  // Imprime o valor do encoder do motor2 com 2 casas decimais
+  Serial.print(", \"MotorRL\": ");
+  Serial.print(rotationsRL, 2);  // Imprime o valor do encoder do motor3 com 2 casas decimais
+  Serial.print(", \"MotorRR\": ");
+  Serial.print(rotationsRR, 2);  // Imprime o valor do encoder do motor4 com 2 casas decimais
+  Serial.println("}");       // Finaliza a estrutura JSON e quebra a linha
+  Serial.flush();
 
 }
