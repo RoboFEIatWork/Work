@@ -131,13 +131,20 @@ Vel vel;
 void serialEvent() {
   while (Serial.available()) {
     char inChar = (char)Serial.read();
-    buffer[buffer_index] = inChar;
-    buffer_index++;
-    // Verifica se a mensagem está completa
-    if (inChar == END_OF_JSON_CHAR) {
-      buffer[buffer_index] = '\0'; // Adiciona o caractere de terminação nulo para tornar o buffer uma string válida
-      processMessage();
-      buffer_index = 0; // Reseta o buffer
+
+    // Verifica se o caractere recebido é 'R' para resetar a ESP32
+    if (inChar == 'R') {
+      ESP.restart();  // Reinicia a ESP32
+    } else {
+      // Caso contrário, processa a mensagem JSON como antes
+      buffer[buffer_index] = inChar;
+      buffer_index++;
+      // Verifica se a mensagem está completa
+      if (inChar == END_OF_JSON_CHAR) {
+        buffer[buffer_index] = '\0'; // Adiciona o caractere de terminação nulo para tornar o buffer uma string válida
+        processMessage();
+        buffer_index = 0; // Reseta o buffer
+      }
     }
   }
 }
@@ -334,11 +341,19 @@ void loop() {
     // array_encoders.add( posFR );
     // array_encoders.add( posRL );
     // array_encoders.add( posRR );
-    array_encoders.add( rotationsFL );
-    array_encoders.add( rotationsFR );
-    array_encoders.add( rotationsRL );
-    array_encoders.add( rotationsRR );
-    array_encoders.add( rpmFL );
+
+    // array_encoders.add( rotationsFL );
+    // array_encoders.add( rotationsFR );
+    // array_encoders.add( rotationsRL );
+    // array_encoders.add( rotationsRR );
+
+    array_encoders.add( encoder_FL.getCount() );
+    array_encoders.add( encoder_FR.getCount() );
+    array_encoders.add( encoder_RL.getCount() ); 
+    array_encoders.add( encoder_RR.getCount() );     
+
+    
+    //array_encoders.add( rpmFL );
     //-------------------------------------------------------------------------------
 
       // Serializa e envia o documento JSON
