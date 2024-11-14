@@ -99,15 +99,13 @@ float target_rpm_RL = 0;
 float target_rpm_FR = 0;
 float target_rpm_FL = 0;
 
-
+//Vari[avel que guarda o quanto de rotacao o motor fez]
 float rotationsRR = 0.0;
 float rotationsRL = 0.0;
 float rotationsFR = 0.0;
 float rotationsFL = 0.0;
 
-float rpmFL = 0.0;
-
-//Formato da mensagem que a ESP vai receber pela serial, correspondendo ao cmd_vel_caramelo
+//Formato da mensagem que a ESP vai receber pela serial, correspondendo ao cmd_vel
 struct Vel
 {
   struct Linear
@@ -175,6 +173,7 @@ void processMessage() {
   }
 }
 
+//  Limpa as leituras dos encoders
 void clearEncoder() {
   encoder_RR.clearCount();
   encoder_RL.clearCount();
@@ -182,7 +181,7 @@ void clearEncoder() {
   encoder_FL.clearCount();
 }
 
-
+//  Controle PI
 float CalcControlSignal(float rpm, float& rpm_previo, float& rpm_filtrado, float target_rpm,float& erro, float& erroInt, float Kp, float Ki) {
   // Filtro passa-baixa de 25Hz
   rpm_filtrado = 0.854 * rpm_filtrado + 0.0728 * rpm + 0.0728 * rpm_previo;
@@ -248,9 +247,11 @@ void CalcSpeed() {
   float u_s[4] = {u_s_RR,u_s_RL,u_s_FR,u_s_FL};
   float zero_pwm[4] = {512,546,512,512};
 
+  // Aplica o concerto aos motores
   for(int i = 0; i < 4; i++){
     pwm[i] = ((u_s[i] / 144) * 512) + 512;
 
+    // limita o pwm para nao passar dos valores maximos
     if(pwm[i] < 0){
       pwm[i] = 0;
     }
@@ -299,13 +300,13 @@ void setup() {
   /////ledcSetup(canal_RL_PWM, frequencia_PWM, resolucao_PWM); // Configura o canal RL_PWM
   ledcAttachChannel(Pino_FL_PWM, 500, 10 ,3); // Associa o pino PWM ao canal FL
 
-  //
+  // Seta o pwm inicial `Parado` para todos os motores
   ledcWrite(Pino_RR_PWM, pwmRR);
   ledcWrite(Pino_RL_PWM, pwmRL);
   ledcWrite(Pino_FR_PWM, pwmFR);
   ledcWrite(Pino_FL_PWM, pwmFL);
 
-  //
+  // Aplica os canais aos encoders
   encoder_RR.attachHalfQuad(Pino_RR_A, Pino_RR_B);
   encoder_RL.attachHalfQuad(Pino_RL_A, Pino_RL_B);
   encoder_FR.attachHalfQuad(Pino_FR_A, Pino_FR_B);
@@ -334,45 +335,21 @@ void loop() {
 
     StaticJsonDocument<500> doc; // Cria um documento JSON
 
-      // --- Leitura dos Encoders------------------------------------------------------
+    // --- Leitura dos Encoders------------------------------------------------------
     JsonArray array_encoders = doc.createNestedArray("encoders"); // Cria um array JSON
-    // Adiciona valores ao array
-    // array_encoders.add( posFL );
-    // array_encoders.add( posFR );
-    // array_encoders.add( posRL );
-    // array_encoders.add( posRR );
 
-    // array_encoders.add( rotationsFL );
-    // array_encoders.add( rotationsFR );
-    // array_encoders.add( rotationsRL );
-    // array_encoders.add( rotationsRR );
+    // Adiciona valores ao array
 
     array_encoders.add( rotationsFL );
     array_encoders.add( rotationsFR );
     array_encoders.add( rotationsRL ); 
     array_encoders.add( rotationsRR );     
 
-    
-    //array_encoders.add( rpmFL );
     //-------------------------------------------------------------------------------
 
-      // Serializa e envia o documento JSON
+    // Serializa e envia o documento JSON
     serializeJson(doc, Serial);
     Serial.println(); // Adiciona uma nova linha
   }
 
-  //Envia a leitura dos encoders pela serial para o PC, no formato Json, para fazer o SLAM
-  //Rotations mostra a diferença do quanto de volta a roda deu desde a última leitura. Ou seja, 0.3 voltas, por exemplo.
-  // Serial.print("{\"MotorFL\": ");
-  // Serial.print(Pino_FL_PWM, 2);  // Imprime o valor do encoder do motor1 com 2 casas decimais
-  // Serial.print(", \"MotorFR\": ");
-  // Serial.print(Pino_FR_PWM, 2);  // Imprime o valor do encoder do motor2 com 2 casas decimais
-  // Serial.print(", \"MotorRL\": ");
-  // Serial.print(Pino_RL_PWM, 2);  // Imprime o valor do encoder do motor3 com 2 casas decimais
-  // Serial.print(", \"MotorRR\": ");
-  // Serial.print(Pino_RR_PWM, 2);  // Imprime o valor do encoder do motor4 com 2 casas decimais
-  // Serial.println("}");       // Finaliza a estrutura JSON e quebra a linha
-  // Serial.flush();
-
 }
-vvvvvv
