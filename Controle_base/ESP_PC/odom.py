@@ -1,11 +1,9 @@
-import os
 import json
 import serial
 import serial.tools.list_ports
 import math
 import threading
 import time
-from tf2_ros import TransformBroadcaster
 
 import rclpy
 from rclpy.node import Node
@@ -13,7 +11,7 @@ from rclpy.qos import QoSProfile
 from rclpy.logging import LoggingSeverity
 
 from std_msgs.msg import Int32MultiArray
-from geometry_msgs.msg import Point, Pose, Quaternion, Twist, Vector3 , TransformStamped
+from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 
 
@@ -38,8 +36,6 @@ class Ros2Serial(Node):
         self.wheel_radius = 0.05  # Raio da roda em metros
         self.lx = 0.2355  # Distância entre rodas no eixo X
         self.ly = 0.15  # Distância entre rodas no eixo Y
-        self.pulses_per_rotation = 1024
-        self.motor_reduction = 28
 
         # Estado inicial do robô
         self.x = 0.0
@@ -47,13 +43,11 @@ class Ros2Serial(Node):
         self.th = 0.0
         self.last_time = time.perf_counter()
 
-        # Distâncias percorridas pelas rodas
+        # Velocidades das rodas
         self.v1 = 0
         self.v2 = 0
         self.v3 = 0
         self.v4 = 0
-
-        self.odom_broadcaster = TransformBroadcaster(self)
 
         # Configurações de tópicos ROS 2
         qos_profile = QoSProfile(depth=50)
@@ -72,14 +66,7 @@ class Ros2Serial(Node):
         self.publish_thread.daemon = True  # Garante que a thread será encerrada com o nó
         self.publish_thread.start()
 
-        
-    def euler_to_quaternion(self,roll, pitch, yaw):
-        qx = math.sin(roll / 2) * math.cos(pitch / 2) * math.cos(yaw / 2) - math.cos(roll / 2) * math.sin(pitch / 2) * math.sin(yaw / 2)
-        qy = math.cos(roll / 2) * math.sin(pitch / 2) * math.cos(yaw / 2) + math.sin(roll / 2) * math.cos(pitch / 2) * math.sin(yaw / 2)
-        qz = math.cos(roll / 2) * math.cos(pitch / 2) * math.sin(yaw / 2) - math.sin(roll / 2) * math.sin(pitch / 2) * math.cos(yaw / 2)
-        qw = math.cos(roll / 2) * math.cos(pitch / 2) * math.cos(yaw / 2) + math.sin(roll / 2) * math.sin(pitch / 2) * math.sin(yaw / 2)
-        return (qx, qy, qz, qw)
-
+    #   Conecta com a serial do arduino
     def connect_to_serial(self, port):
         while rclpy.ok():
             try:
@@ -91,6 +78,7 @@ class Ros2Serial(Node):
                 self.get_logger().error(f"Falha ao conectar com a porta serial: {e}")
             time.sleep(0.5)
 
+    #   Recebe o json da ESP via serial
     def listener_callback(self, msg):
         data = {
             'linear_x': float(msg.linear.x),
@@ -110,6 +98,7 @@ class Ros2Serial(Node):
         except (serial.SerialException, serial.SerialTimeoutException) as e:
             self.get_logger().warn(f"Erro ao enviar comando: {e}")
 
+    #   Verifica a mensagem recebida pela ESP, a leitura dos encoders
     def publish_messages(self):
         while rclpy.ok():
             try:
@@ -128,17 +117,19 @@ class Ros2Serial(Node):
             except Exception as e:
                 self.get_logger().error(f"Erro inesperado: {e}")
 
+    #   Calcula a velocidade das rodas para o Caramelo
     def publish_odometry(self, data):
         current_time = time.perf_counter()
         delta_time = current_time - self.last_time
         self.last_time = current_time
         try:
+            #   Recebe o quanto de volta a roda rodou e com base nisso calcula a velocidade da roda,
+            # levando em consideracao o tempo decorrido
             self.v1 =  float(data["encoders"][0]) * (1/delta_time) * 2 * math.pi * self.wheel_radius
             self.v2 = -float(data["encoders"][1]) * (1/delta_time) * 2 * math.pi * self.wheel_radius
             self.v3 =  float(data["encoders"][2]) * (1/delta_time) * 2 * math.pi * self.wheel_radius
             self.v4 = -float(data["encoders"][3]) * (1/delta_time) * 2 * math.pi * self.wheel_radius
 
-            self.get_logger().info(f"self.v1: {self.v1}, self.v2={self.v2},self.v3={self.v3},self.v4={self.v4}")
         except (ValueError, KeyError) as e:
             self.get_logger().error(f"Erro ao processar encoders: {e}")
             self.v1 = 0
@@ -151,23 +142,14 @@ class Ros2Serial(Node):
         vy  = (- self.v1 + self.v2 + self.v3 - self.v4) / 4
         vth = (- self.v1 + self.v2 - self.v3 + self.v4) / (4 * (self.lx + self.ly))
 
-        self.get_logger().info(f"vth: {vth}")
-
         # Error Correction
         if abs(vx) < 0.015: vx = 0
         if abs(vy) < 0.015: vy = 0
         if abs(vth) < 0.015: vth = 0
 
         self.computeOdom(vx, vy, vth, delta_time) 
-        
-        # Atualizando self.x e self.y como float
-        #self.x = float(self.x)
-        #self.y = float(self.y)
 
-        
-
-
-
+    #   Calcula a odometria para o Caramelo
     def computeOdom(self, vx, vy, vth, dt):
 
         delta_x = (vx * math.cos(self.th) - vy * math.sin(self.th)) * dt
@@ -189,7 +171,7 @@ class Ros2Serial(Node):
         self.get_logger().info(f"Odometry publicada: x={self.x:.2f}, y={self.y:.2f}, theta={self.th:.2f}")
 
 
-
+#   Funcao main
 def main(args=None):
     rclpy.init(args=args)
     node = Ros2Serial()
