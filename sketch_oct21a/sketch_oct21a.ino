@@ -37,7 +37,7 @@ ESP32Encoder encoder_FL;
 int pwmFR = 520;
 int pwmFL = 520;
 int pwmRR = 520;
-int pwmRL = 550;
+int pwmRL = 600;
 
 //globais
 long prevTRR = 0;
@@ -90,7 +90,7 @@ void clearEncoder() {
 }
 
 float target_rpm(){
-  float target_rpm = 30;
+  float target_rpm = 0;
 
   return target_rpm;
 }

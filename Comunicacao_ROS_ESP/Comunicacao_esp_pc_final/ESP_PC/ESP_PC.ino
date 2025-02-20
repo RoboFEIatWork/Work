@@ -338,7 +338,7 @@ void loop() {
     array_encoders.add( rotationsFR );
     array_encoders.add( rotationsRL );
     array_encoders.add( rotationsRR );
-    array_encoders.add( rpmFL );
+    //array_encoders.add( rpmFL );
     //-------------------------------------------------------------------------------
 
       // Serializa e envia o documento JSON

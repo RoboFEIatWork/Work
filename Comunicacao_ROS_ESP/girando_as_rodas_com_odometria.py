@@ -11,7 +11,7 @@ class Serial_pc():
 
         print('Criando o subscriber para cmd_vel')
 
-        self.ser  = serial.Serial("COM5", baudrate= 9600,
+        self.ser  = serial.Serial("COM6", baudrate= 9600,
            timeout=2.5,
            parity=serial.PARITY_NONE,
            bytesize=serial.EIGHTBITS,
@@ -112,7 +112,7 @@ class Serial_pc():
     # função de callback que lê a mensagem
     def envia(self):
         data = {}
-        data["linear_x"] = 0.05  #m/s movimento no eixo x
+        data["linear_x"] = 0.1  #m/s movimento no eixo x
         data["linear_y"] = 0.0 #m/s movimento no eixo y
         data["linear_z"] = 0.0   #m/s movimento no eixo z
         data["angular_x"] = 0.0 #rad/s de rotação no eixo x
